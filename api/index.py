@@ -193,8 +193,13 @@ def _do_backfill():
         if n is None or n < 0:
             return jsonify({"ok": False, "error": "费用元 格式不对"}), 400
         fields["费用元"] = n
+    s = (body.get("时效") or "").strip()
+    if s:
+        if s not in ("普通", "加急"):
+            return jsonify({"ok": False, "error": "时效只能是 普通 或 加急"}), 400
+        fields["时效"] = s
     if not fields:
-        return jsonify({"ok": False, "error": "请填写重量kg 或 费用元 至少一项"}), 400
+        return jsonify({"ok": False, "error": "请填写重量kg / 费用元 / 时效 至少一项"}), 400
 
     out = _http("PUT",
                 f"{FEISHU_BASE}/bitable/v1/apps/{APP_TOKEN}/tables/{TABLE_ID}/records/{record_id}",

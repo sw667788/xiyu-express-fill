@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>寄样快递费用回填</title>
+<style>
+  :root {
+    --primary: #1e88a8;          /* 青蓝主色（参考截图风格） */
+    --primary-light: #eaf6f9;
+    --primary-strong: #0c6b85;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --text: #1f2329;
+    --text-light: #4b515c;
+    --muted: #8a919f;
+    --border: #e5e8ef;
+    --ok: #2ba471;
+    --err: #d54941;
+    --radius: 10px;
+    --bar: 4px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 20px 14px 48px; }
+
+  /* —— 顶部 header —— */
+  header { padding: 8px 2px 20px; }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  /* —— 模式切换 tabs —— */
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; padding: 10px 0; text-align: center; border-radius: var(--radius);
+    background: #fff; border: 1px solid var(--border); font-size: 14px; cursor: pointer;
+    color: var(--muted); transition: all .15s;
+  }
+  .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  /* —— 模块标题（左侧竖条） —— */
+  .section {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; margin-bottom: 14px;
+  }
+  .sec-head {
+    display: flex; align-items: center; margin-bottom: 14px; padding-left: 10px;
+    border-left: var(--bar) solid var(--primary);
+    height: 18px;
+  }
+  .sec-head .title { font-size: 16px; font-weight: 600; }
+  .sec-head .badge {
+    margin-left: auto; font-size: 12px; padding: 2px 10px; border-radius: 999px;
+    background: #fff3e0; color: #b76e00;
+  }
+  .sec-head .badge.done { background: #e8f6ef; color: var(--ok); }
+
+  /* —— 查询模块 —— */
+  .search-row { display: flex; gap: 10px; }
+  .search-row .inputbox {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 0 14px; background: #fff;
+  }
+  .search-row .inputbox svg { color: var(--muted); flex-shrink: 0; }
+  .search-row input {
+    flex: 1; padding: 12px 0; border: none; outline: none; font-size: 15px; background: transparent;
+  }
+  .search-row input:focus { /* no border since parent has it */ }
+  .search-row .inputbox:focus-within { border-color: var(--primary); }
+  .search-row .btn-search {
+    border: none; border-radius: var(--radius); padding: 0 24px;
+    background: var(--primary); color: #fff; font-size: 15px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .search-row .btn-search:hover { background: var(--primary-strong); }
+  .search-row .btn-search:disabled { opacity: .5; }
+
+  /* —— 寄件基础信息 grid —— */
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px;
+  }
+  .info-cell { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+  .info-cell .icon { color: var(--muted); flex-shrink: 0; margin-top: 2px; }
+  .info-cell .body { min-width: 0; flex: 1; }
+  .info-cell .label { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .info-cell .value { font-size: 14px; color: var(--text); word-break: break-word; }
+  .info-cell .value.link { color: var(--primary); font-weight: 600; }
+  .info-cell.full { grid-column: 1 / -1; }
+
+  /* —— 图片附件 —— */
+  .img-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .img-card {
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;
+    background: #fff; cursor: pointer;
+  }
+  .img-card:hover { border-color: var(--primary); }
+  .img-card .img-head {
+    display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-light);
+    margin-bottom: 10px;
+  }
+  .img-card .img-head .icon { color: var(--muted); }
+  .img-card img {
+    width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 8px; background: #f0f2f6;
+  }
+  .img-card .placeholder {
+    width: 100%; aspect-ratio: 1/1; border-radius: 8px; background: #f4f6fb;
+    display: flex; align-items: center; justify-content: center; color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* —— 回填表单 —— */
+  .fill-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .fill-cell .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .fill-cell .inputbox {
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 0 12px; background: #fff;
+  }
+  .fill-cell .inputbox .unit { color: var(--muted); font-size: 13px; }
+  .fill-cell .inputbox input {
+    flex: 1; padding: 11px 0; border: none; outline: none; font-size: 15px;
+    background: transparent;
+  }
+  .fill-cell .inputbox:focus-within { border-color: var(--primary); }
+  .submit-row { margin-top: 14px; text-align: right; }
+  .submit-row .btn-submit {
+    border: none; border-radius: var(--radius); padding: 10px 26px;
+    background: var(--primary); color: #fff; font-size: 15px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .submit-row .btn-submit:hover { background: var(--primary-strong); }
+  .submit-row .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* —— 列表模式单条 —— */
+  .record-card { margin-bottom: 14px; }
+  .record-card .head { padding: 0 4px 8px; display: flex; align-items: center; gap: 12px; }
+  .record-card .head .waybill { font-size: 16px; font-weight: 700; letter-spacing: .4px; }
+  .record-card .head .meta { color: var(--muted); font-size: 13px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 48px 0; font-size: 14px; }
+  .loading { text-align: center; color: var(--muted); padding: 30px 0; font-size: 14px; }
+  .spin { display: inline-block; width: 16px; height: 16px; border: 2px solid #d5dae3;
+    border-top-color: var(--primary); border-radius: 50%; animation: r .7s linear infinite;
+    vertical-align: -3px; margin-right: 6px; }
+  @keyframes r { to { transform: rotate(360deg); } }
+
+  #toast {
+    position: fixed; left: 50%; top: 22px; transform: translateX(-50%) translateY(-80px);
+    background: #32373f; color: #fff; padding: 10px 18px; border-radius: 8px;
+    font-size: 14px; opacity: 0; transition: all .25s; z-index: 99; max-width: 90%;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.ok { background: var(--ok); }
+  #toast.err { background: var(--err); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📦 寄样快递费用回填</h1>
+    <p>查看寄样记录，填入实际重量与运费即可完成回填</p>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-list" onclick="switchTab('list')">待回填列表</div>
+    <div class="tab" id="tab-search" onclick="switchTab('search')">面单号查询</div>
+  </div>
+
+  <!-- =============== 模式一：待回填列表 =============== -->
+  <section id="panel-list">
+    <div id="list-box"><div class="loading"><span class="spin"></span>正在拉取待回填面单…</div></div>
+  </section>
+
+  <!-- =============== 模式二：按面单号查询 =============== -->
+  <section id="panel-search" style="display:none">
+    <div class="section">
+      <div class="sec-head"><span class="title">面单号查询</span></div>
+      <div class="search-row">
+        <div class="inputbox">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="q-input" type="text" inputmode="numeric" placeholder="如 99656529" onkeydown="if(event.key==='Enter')doSearch()">
+        </div>
+        <button class="btn-search" onclick="doSearch()">查询 <span style="font-size:14px">→</span></button>
+      </div>
+    </div>
+    <div id="search-result"></div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ===== 内联 SVG 图标（lucide 风格） =====
+var ICON = {
+  doc:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  cal:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  user:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  truck:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+  bld:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>',
+  phone:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  pin:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  img:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+  scale:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8l-2 4a4 4 0 0 0 8 0L9 8M19 8l-2 4a4 4 0 0 0 8 0l-2-4"/></svg>',
+  check:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+};
+
+var allRecords = null;
+var editing = {};
+
+function switchTab(t) {
+  document.getElementById('tab-list').classList.toggle('active', t === 'list');
+  document.getElementById('tab-search').classList.toggle('active', t === 'search');
+  document.getElementById('panel-list').style.display = t === 'list' ? '' : 'none';
+  document.getElementById('panel-search').style.display = t === 'search' ? '' : 'none';
+  if (t === 'list' && allRecords === null) loadRecords();
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function fmtDate(ts) {
+  if (!ts) return '';
+  var d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0');
+}
+
+function toast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (type || '');
+  clearTimeout(el._t);
+  el._t = setTimeout(function(){ el.className = ''; }, 2600);
+}
+
+async function loadRecords() {
+  var box = document.getElementById('list-box');
+  box.innerHTML = '<div class="loading"><span class="spin"></span>正在拉取待回填面单…</div>';
+  try {
+    var resp = await fetch('/api/records');
+    var data = await resp.json();
+    if (!data.ok) throw new Error(data.error || '加载失败');
+    allRecords = data.records;
+    renderPending();
+  } catch (e) {
+    box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '<br>请刷新重试</div>';
+  }
+}
+
+function pendingList() {
+  return (allRecords || []).filter(function(r){ return r['待回填']; });
+}
+
+function renderPending() {
+  var box = document.getElementById('list-box');
+  var pend = pendingList();
+  if (pend.length === 0) {
+    box.innerHTML = '<div class="empty">🎉 没有待回填的面单，全部已填完</div>';
+    return;
+  }
+  box.innerHTML = '<div class="record-card"><div class="head" style="color:var(--muted);font-size:13px">待回填面单（' + pend.length + ' 单）</div></div>' +
+                  pend.map(recordCardHTML).join('');
+  bindInputs(box);
+}
+
+function infoCells(r) {
+  // 双列布局：左 (面单号/收件人/收件公司/收件地址) 右 (日期/收件电话/安排人/寄件样品) ；地址/备注/寄件样品 full
+  var cells = [
+    {icon: ICON.doc,   label: '面单号',   value: r['面单号'], link: true},
+    {icon: ICON.cal,   label: '日期',     value: fmtDate(r['日期'])},
+    {icon: ICON.user,  label: '安排人',   value: r['安排人']},
+    {icon: ICON.user,  label: '收件人',   value: r['收件人']},
+    {icon: ICON.bld,   label: '收件公司', value: r['收件公司']},
+    {icon: ICON.phone, label: '收件电话', value: r['收件电话']},
+    {icon: ICON.pin,   label: '收件地址', value: r['收件地址'], full: true},
+    {icon: ICON.doc,   label: '备注',     value: r['备注'], full: true},
+  ];
+  return cells.filter(function(c){ return c.value; }).map(function(c){
+    return '<div class="info-cell' + (c.full ? ' full' : '') + '">' +
+      '<span class="icon">' + c.icon + '</span>' +
+      '<div class="body"><div class="label">' + esc(c.label) + '</div>' +
+      '<div class="value' + (c.link ? ' link' : '') + '">' + esc(c.value) + '</div></div></div>';
+  }).join('');
+}
+
+function imagesBlock(r) {
+  var hasAny = (r['面单图片'] && r['面单图片'].length) || (r['寄件图片'] && r['寄件图片'].length);
+  if (!hasAny) return '';
+  function one(label, arr) {
+    if (!arr || !arr.length) return '';
+    var imgs = arr.map(function(img){
+      return '<img loading="lazy" src="/api/img/' + esc(img.token) + '" onclick="window.open(this.src)">';
+    }).join('');
+    return '<div class="img-card">' +
+      '<div class="img-head">' + ICON.img + ' <span>' + esc(label) + '（' + arr.length + '）</span></div>' + imgs + '</div>';
+  }
+  return '<div class="img-grid">' +
+    one('面单图片', r['面单图片']) + one('寄件图片', r['寄件图片']) +
+    '</div>';
+}
+
+function fillBlock(r) {
+  var ed = editing[r.record_id] || {};
+  return '<div class="fill-grid">' +
+    '<div class="fill-cell"><div class="label">重量（kg）</div>' +
+      '<div class="inputbox">' + ICON.scale +
+        '<input type="number" step="0.01" min="0" placeholder="如 2.50" class="in-weight" value="' + (ed.w || '') + '">' +
+        '<span class="unit">kg</span></div></div>' +
+    '<div class="fill-cell"><div class="label">运费（元）</div>' +
+      '<div class="inputbox">' + ICON.truck +
+        '<input type="number" step="0.01" min="0" placeholder="如 120" class="in-cost" value="' + (ed.c || '') + '">' +
+        '<span class="unit">¥</span></div></div>' +
+  '</div>' +
+  '<div class="submit-row"><button class="btn-submit" onclick="submitFill(this)">' + ICON.check + ' 提交回填</button></div>';
+}
+
+function recordCardHTML(r) {
+  return '' +
+    '<div class="section record-card" data-id="' + r.record_id + '">' +
+      '<div class="sec-head"><span class="title">寄件基础信息</span>' +
+        (r['待回填'] ? '<span class="badge">待回填</span>' : '<span class="badge done">已回填</span>') +
+      '</div>' +
+      '<div class="info-grid">' + infoCells(r) + '</div>' +
+    '</div>' +
+    (function(){
+      var imgs = imagesBlock(r);
+      return imgs ? '<div class="section record-card" data-id="' + r.record_id + '">' +
+        '<div class="sec-head"><span class="title">图片附件</span></div>' + imgs + '</div>' : '';
+    })() +
+    '<div class="section record-card" data-id="' + r.record_id + '">' +
+      '<div class="sec-head"><span class="title">回填重量 / 运费</span></div>' +
+      fillBlock(r) +
+    '</div>';
+}
+
+function bindInputs(box) {
+  Array.prototype.forEach.call(box.querySelectorAll('input.in-weight, input.in-cost'), function(el){
+    el.addEventListener('input', function(){
+      var card = el.closest('.section.record-card');
+      if (!card) return;
+      // 同一 record_id 的所有 section，编辑状态共享：用第一条作锚点
+      var id = card.getAttribute('data-id');
+      editing[id] = {
+        w: document.querySelector('.section.record-card[data-id="' + id + '"] .in-weight').value,
+        c: document.querySelector('.section.record-card[data-id="' + id + '"] .in-cost').value
+      };
+    });
+  });
+}
+
+async function submitFill(btn) {
+  var card = btn.closest('.section.record-card');
+  var id = card.getAttribute('data-id');
+  var w = document.querySelector('.section.record-card[data-id="' + id + '"] .in-weight').value;
+  var c = document.querySelector('.section.record-card[data-id="' + id + '"] .in-cost').value;
+  if (!w && !c) { toast('请先填写重量或运费', 'err'); return; }
+  btn.disabled = true; btn.textContent = '提交中…';
+  try {
+    var resp = await fetch('/api/backfill', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({record_id: id, '重量kg': w, '费用元': c})
+    });
+    var data = await resp.json();
+    if (!data.ok) throw new Error(data.error || '提交失败');
+    toast('✓ 回填成功' + (w ? '，重量 ' + w + 'kg' : '') + (c ? '，运费 ¥' + c : ''), 'ok');
+    editing[id] = null;
+    await loadRecords();
+  } catch (e) {
+    toast('提交失败：' + e.message, 'err');
+    btn.disabled = false; btn.innerHTML = ICON.check + ' 提交回填';
+  }
+}
+
+async function doSearch() {
+  var q = document.getElementById('q-input').value.trim();
+  var box = document.getElementById('search-result');
+  if (!q) { toast('请输入面单号', 'err'); return; }
+  box.innerHTML = '<div class="loading"><span class="spin"></span>查询中…</div>';
+  try {
+    if (allRecords === null) {
+      var resp = await fetch('/api/records');
+      var data = await resp.json();
+      if (!data.ok) throw new Error(data.error || '加载失败');
+      allRecords = data.records;
+    }
+    var hits = allRecords.filter(function(r){ return String(r['面单号']).indexOf(q) !== -1; });
+    if (hits.length === 0) {
+      box.innerHTML = '<div class="empty">未找到面单号包含 “' + esc(q) + '” 的记录</div>';
+      return;
+    }
+    box.innerHTML = hits.map(function(r){
+      return '<div class="head" style="color:var(--muted);font-size:13px;margin-bottom:8px">' +
+             '找到 ' + hits.length + ' 条记录</div>' + recordCardHTML(r);
+    }).join('');
+    bindInputs(box);
+  } catch (e) {
+    box.innerHTML = '<div class="empty">查询失败：' + esc(e.message) + '</div>';
+  }
+}
+
+loadRecords();
+</script>
+</body>
+</html>

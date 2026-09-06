@@ -2,15 +2,19 @@
 """寄样快递费用回填 — Vercel (Flask) 后端
 
 数据源：飞书 Bitable「稀榆快递费用登记」app 下「寄样快递费用表」。
-功能：
-  GET  /                页面（回填 UI）
-  GET  /api/records     拉取全表记录（含待回填标记）
-  POST /api/backfill    按 record_id 回填 重量kg / 费用元
-  GET  /api/img/<token> 图片代理（飞书附件下载需带鉴权头，前端无法直连）
+
+Vercel Python(runtime) 对 Flask 的路径转发不可靠（rewrite 会改写发给
+后端的 PATH_INFO，原路径可能丢失）。因此本项目采用「单一入口 + 参数分发」：
+
+  GET  /            （rewrites → /api/index） 默认渲染页面
+  GET  /?r=records  拉取全表记录（含待回填标记）
+  GET  /?r=img&token=<file_token>   图片代理
+  POST /  body={record_id,重量kg,费用元}   回填
+
+前端全部用相对 URL（?r=...），浏览器地址栏始终是 /，query 不会被 rewrite 改动。
 
 凭据从环境变量读取（Vercel Environment Variables）：
-  FEISHU_APP_ID / FEISHU_APP_SECRET   （必填；本地缺失时回退读 ~/.openclaw/openclaw.json）
-  FEISHU_APP_TOKEN / FEISHU_TABLE_ID  （可选，默认已指向寄样快递费用表）
+  FEISHU_APP_ID / FEISHU_APP_SECRET
 """
 import os
 import json
@@ -26,15 +30,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, template_folder=os.path.join(_HERE, "templates"))
 
-# 待回填判定依据的两个字段
-WEIGHT_FIELD = "重量kg"
-COST_FIELD = "费用元"
-
-# 展示字段（从飞书记录 fields 取出转文本）
-SHOW_FIELDS = [
-    "面单号", "日期", "收件人", "收件电话", "收件公司", "收件地址",
-    "备注", "安排人", "时效", "寄件样品",
-]
 IMAGE_FIELDS = ["面单图片", "寄件图片"]
 
 
@@ -60,13 +55,13 @@ def _http(method, url, token=None, payload=None, timeout=20):
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8")), resp.headers
+            return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "ignore")
         try:
-            return e.code, json.loads(body), e.headers
+            return json.loads(body)
         except Exception:
-            return e.code, {"code": e.code, "msg": body[:200]}, e.headers
+            return {"code": e.code, "msg": body[:200]}
 
 
 def _raw(url, token=None, timeout=20):
@@ -74,17 +69,17 @@ def _raw(url, token=None, timeout=20):
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read(), resp.headers
+            return resp.status, resp.read(), resp.headers.get("Content-Type", "image/jpeg")
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), e.headers
+        return e.code, e.read(), "text/plain"
 
 
 def _tenant_token():
     aid, sec = _feishu_creds()
     if not aid or not sec:
         raise RuntimeError("缺少飞书凭据（FEISHU_APP_ID/SECRET 环境变量）")
-    _, out, _ = _http("POST", f"{FEISHU_BASE}/auth/v3/tenant_access_token/internal",
-                      payload={"app_id": aid, "app_secret": sec}, timeout=10)
+    out = _http("POST", f"{FEISHU_BASE}/auth/v3/tenant_access_token/internal",
+                payload={"app_id": aid, "app_secret": sec}, timeout=10)
     tok = out.get("tenant_access_token")
     if not tok:
         raise RuntimeError("获取 tenant_access_token 失败: " + json.dumps(out, ensure_ascii=False)[:200])
@@ -103,14 +98,12 @@ def _num(v):
     try:
         if v is None or v == "":
             return None
-        f = float(v)
-        return round(f, 4)
+        return round(float(v), 4)
     except (TypeError, ValueError):
         return None
 
 
 def _images(v):
-    """附件字段 -> [{token,name}]"""
     out = []
     if isinstance(v, list):
         for it in v:
@@ -126,18 +119,17 @@ def _read_all_records(token):
         url = f"{FEISHU_BASE}/bitable/v1/apps/{APP_TOKEN}/tables/{TABLE_ID}/records?page_size=100"
         if page_token:
             url += "&page_token=" + urllib.parse.quote(page_token)
-        _, out, _ = _http("GET", url, token=token, timeout=20)
+        out = _http("GET", url, token=token, timeout=20)
         if out.get("code") != 0:
             raise RuntimeError("拉取记录失败: " + json.dumps(out, ensure_ascii=False)[:200])
         for item in out.get("data", {}).get("items", []):
             if item.get("deleted"):
                 continue
             fld = item.get("fields", {})
-            rid = item.get("record_id") or item.get("id")
-            weight = _num(fld.get(WEIGHT_FIELD))
-            cost = _num(fld.get(COST_FIELD))
+            weight = _num(fld.get("重量kg"))
+            cost = _num(fld.get("费用元"))
             rec = {
-                "record_id": rid,
+                "record_id": item.get("record_id") or item.get("id"),
                 "面单号": _text(fld.get("面单号")),
                 "日期": fld.get("日期"),
                 "收件人": _text(fld.get("收件人")),
@@ -162,24 +154,24 @@ def _read_all_records(token):
     return records
 
 
-# ---------- 页面 ----------
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-# ---------- API ----------
-@app.route("/api/records")
-def api_records():
+# ---------- 统一入口 ----------
+@app.route("/", methods=["GET", "POST"])
+@app.route("/api/index", methods=["GET", "POST"])
+def entry():
     try:
-        records = _read_all_records(_tenant_token())
-        return jsonify({"ok": True, "records": records})
+        if request.method == "POST":
+            return _do_backfill()
+        r = request.args.get("r", "page")
+        if r == "records":
+            return jsonify({"ok": True, "records": _read_all_records(_tenant_token())})
+        if r == "img":
+            return _do_img(request.args.get("token", ""))
+        return render_template("index.html")
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/api/backfill", methods=["POST"])
-def api_backfill():
+def _do_backfill():
     try:
         body = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -194,45 +186,34 @@ def api_backfill():
         n = _num(w)
         if n is None or n < 0:
             return jsonify({"ok": False, "error": "重量kg 格式不对"}), 400
-        fields[WEIGHT_FIELD] = n
+        fields["重量kg"] = n
     c = body.get("费用元")
     if c is not None and c != "":
         n = _num(c)
         if n is None or n < 0:
             return jsonify({"ok": False, "error": "费用元 格式不对"}), 400
-        fields[COST_FIELD] = n
-
+        fields["费用元"] = n
     if not fields:
         return jsonify({"ok": False, "error": "请填写重量kg 或 费用元 至少一项"}), 400
 
-    try:
-        token = _tenant_token()
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-    url = f"{FEISHU_BASE}/bitable/v1/apps/{APP_TOKEN}/tables/{TABLE_ID}/records/{record_id}"
-    _, out, _ = _http("PUT", url, token=token, payload={"fields": fields}, timeout=20)
+    out = _http("PUT",
+                f"{FEISHU_BASE}/bitable/v1/apps/{APP_TOKEN}/tables/{TABLE_ID}/records/{record_id}",
+                token=_tenant_token(), payload={"fields": fields}, timeout=20)
     if out.get("code") != 0:
         return jsonify({"ok": False, "error": "飞书更新失败: " + json.dumps(out, ensure_ascii=False)[:300]}), 500
     return jsonify({"ok": True, "updated": fields})
 
 
-@app.route("/api/img/<path:file_token>")
-def api_img(file_token):
-    """代理飞书附件下载（前端 img 无法带 Authorization 头）。"""
-    try:
-        token = _tenant_token()
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-    url = f"{FEISHU_BASE}/drive/v1/medias/{file_token}/download"
-    status, data, headers = _raw(url, token=token, timeout=20)
+def _do_img(file_token):
+    if not file_token:
+        return jsonify({"ok": False, "error": "缺少 token"}), 400
+    status, data, ctype = _raw(
+        f"{FEISHU_BASE}/drive/v1/medias/{file_token}/download", token=_tenant_token(), timeout=20)
     if status != 200:
         return jsonify({"ok": False, "error": f"图片下载失败 http={status}"}), status
-    ctype = headers.get("Content-Type", "image/jpeg") if headers else "image/jpeg"
-    return Response(data, content_type=ctype, headers={
-        "Cache-Control": "public, max-age=3600",
-    })
+    return Response(data, content_type=ctype, headers={"Cache-Control": "public, max-age=3600"})
 
 
 if __name__ == "__main__":
-    # 本地开发：python api/index.py （默认 0.0.0.0:8081）
+    import urllib.parse  # noqa: F401  (被模块级使用，但本地 __main__ 下保证)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8081")), debug=False)

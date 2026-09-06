@@ -244,7 +244,7 @@ async function loadRecords() {
   var box = document.getElementById('list-box');
   box.innerHTML = '<div class="loading"><span class="spin"></span>正在拉取待回填面单…</div>';
   try {
-    var resp = await fetch('/api/records');
+    var resp = await fetch('?r=records');
     var data = await resp.json();
     if (!data.ok) throw new Error(data.error || '加载失败');
     allRecords = data.records;
@@ -296,7 +296,7 @@ function imagesBlock(r) {
   function one(label, arr) {
     if (!arr || !arr.length) return '';
     var imgs = arr.map(function(img){
-      return '<img loading="lazy" src="/api/img/' + esc(img.token) + '" onclick="window.open(this.src)">';
+      return '<img loading="lazy" src="?r=img&token=' + esc(img.token) + '" onclick="window.open(this.src)">';
     }).join('');
     return '<div class="img-card">' +
       '<div class="img-head">' + ICON.img + ' <span>' + esc(label) + '（' + arr.length + '）</span></div>' + imgs + '</div>';
@@ -363,7 +363,7 @@ async function submitFill(btn) {
   if (!w && !c) { toast('请先填写重量或运费', 'err'); return; }
   btn.disabled = true; btn.textContent = '提交中…';
   try {
-    var resp = await fetch('/api/backfill', {
+    var resp = await fetch('', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({record_id: id, '重量kg': w, '费用元': c})
@@ -386,7 +386,7 @@ async function doSearch() {
   box.innerHTML = '<div class="loading"><span class="spin"></span>查询中…</div>';
   try {
     if (allRecords === null) {
-      var resp = await fetch('/api/records');
+      var resp = await fetch('?r=records');
       var data = await resp.json();
       if (!data.ok) throw new Error(data.error || '加载失败');
       allRecords = data.records;
